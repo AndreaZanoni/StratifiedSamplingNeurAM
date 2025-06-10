@@ -33,18 +33,20 @@ if name == "Ishigami":
                   torch.sin(np.pi*x[:,0]) + 7*torch.sin(np.pi*x[:,1])**2 + 0.1*(np.pi*x[:,2]**4)*torch.sin(np.pi*x[:,0])
     mu = lambda n: torch.from_numpy(np.random.uniform(-1, 1, (n, d)))
 
-elif name == "HighDimensional":
-    d = 10
-    f = lambda x: torch.exp(x[0] + 0.05*x[1]) \
-                + torch.exp(0.8*x[2]) \
-                + torch.exp(0.8*x[3] + 0.05*x[4] + 0.05*x[5]) \
-                + torch.exp(0.8*x[6] + 0.05*x[7]) \
-                + torch.exp(0.08*x[8] + 0.05*x[9]) if x.ndim==1 else \
-                  torch.exp(x[:,0] + 0.05*x[:,1]) \
-                + torch.exp(0.8*x[:,2]) \
-                + torch.exp(0.8*x[:,3] + 0.05*x[:,4] + 0.05*x[:,5]) \
-                + torch.exp(0.8*x[:,6] + 0.05*x[:,7]) \
-                + torch.exp(0.08*x[:,8] + 0.05*x[:,9])
+elif name == "Sobol":
+    a = np.array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+    d = a.size
+    def f(x):
+        if x.ndim == 1:
+            S = torch.tensor(1.)
+            for i in range(d):
+                S *= (torch.abs(x[i] - 1) + a[i])/(1 + a[i])
+            return S
+        else:
+            S = torch.ones(x.shape[0])
+            for i in range(d):
+                S *= (2*torch.abs(2*x[:,i] - 1) + a[i])/(1 + a[i])
+            return S
     mu = lambda n: torch.from_numpy(np.random.uniform(-1, 1, (n, d)))
                     
 elif name == "Borehole":
@@ -107,7 +109,6 @@ layers_surrogate = 2
 neurons_surrogate = 8
 
 autoencoder, surrogate, _ = compute_reduction(d, data_reduced, f_data_reduced, r, activation, layers_AE, neurons_AE, layers_surrogate, neurons_surrogate, epochs)
-f_S = lambda x: torch.squeeze(surrogate(autoencoder.encoder(x))).detach()
 
 K = round(1e6)
 data_CDF = mu(K)
@@ -133,7 +134,6 @@ else:
 
 MC = np.empty((iterations,))
 sMC_new = np.empty((iterations,))
-MC_S = np.empty((iterations,))
 
 if d < 6:
     sMC_old = np.empty((iterations,))
@@ -147,7 +147,6 @@ for it in tqdm(range(iterations)):
         sMC_new[it] = compute_sMC_new(f, autoencoder, F, d, N, S, mu, name)
     if d < 6:
         sMC_old[it] = compute_sMC_old(f, d, N, S, mu)
-    MC_S[it]  = compute_MC(f_S, d, N*10, mu)
             
 #%% Plot
 
@@ -160,7 +159,6 @@ plt.plot(x_axis, norm.pdf(x_axis, np.mean(MC), np.std(MC)), label="MC")
 plt.plot(x_axis, norm.pdf(x_axis, np.mean(sMC_new), np.std(sMC_new)), label="sMC_new")
 if d < 6:
     plt.plot(x_axis, norm.pdf(x_axis, np.mean(sMC_old), np.std(sMC_old)), label="sMC_old")
-plt.axvline(x=np.mean(MC_S), label="MC_S")
 plt.legend()
 plt.ylim(0, 1.1*norm.pdf(x_axis, np.mean(sMC_new), np.std(sMC_new)).max())
 
