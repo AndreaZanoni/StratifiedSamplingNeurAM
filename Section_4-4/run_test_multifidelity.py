@@ -28,7 +28,7 @@ g_LF = lambda x: torch.exp(0.01*x[0] + 0.99*x[1]) + 0.15*torch.sin(3*np.pi*x[1])
               
 w = 0.01
 iterations = 1000
-N = 1000
+N = 2000
 M = 100
   
 data = 2*torch.rand((M, d)) - 1
