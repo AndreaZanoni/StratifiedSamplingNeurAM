@@ -49,7 +49,7 @@ C = np.zeros((d, d))
 for x in tqdm(data_AS):
     g = grad_f(x).numpy()
     C += np.outer(g, g)
-C /= N
+C /= M
 Lambda, W = np.linalg.eig(C)
 idx = Lambda.argsort()[::-1]
 Lambda = Lambda[idx]

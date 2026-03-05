@@ -6,7 +6,7 @@ import numpy as np
 import torch
 import matplotlib.pyplot as plt
 from tqdm import tqdm
-from scipy.stats import norm
+from scipy.stats import qmc
 
 #%% Autoencoder and surrogate model
 
@@ -98,83 +98,41 @@ def compute_reduction(d, data, f_data, r, activation, layers_AE, neurons_AE, lay
 
 #%% Monte Carlo
 
-def compute_MC(f, d, N, mu):
+def compute_MC(f, d, N):
     
-    samples = mu(N)
+    samples = torch.from_numpy(np.random.uniform(-1, 1, (N, d)))
     MC = torch.mean(f(samples)).item()
 
     return MC
 
-def compute_sMC_old_1D(f, d, N, S, mu, name, left=0, right=0, dim=0):
-    
-    if name == "Borehole":
-        size = (right[dim] - left[dim])/S
-    else:
-        size = 2/S
-    sMC_old_1D = 0
-    
-    samples = mu(2*N)
-    
-    B = np.empty((S,), dtype=int)
-    measure = np.empty((S,))
-    
-    for i in range(S):
-        if name == "Borehole":
-            if dim == 0:
-                measure[i] = norm.cdf((left[dim] + (i+1)*size - 0.1)/0.0161812) - norm.cdf((left[dim] + i*size - 0.1)/0.0161812)
-            elif dim == 1:
-                measure[i] = norm.cdf((np.log(left[dim] + (i+1)*size) - 7.71)/1.0056) - norm.cdf((np.log(left[dim] + i*size) - 7.71)/1.0056)
-            else:
-                measure[i] = 1/S
-            B[i] = round(N*measure[i])
-            stratum_samples = samples[(samples[:,dim] >= left[dim] + i*size)*(samples[:,dim] < left[dim] + (i+1)*size)][:B[i]]
-        else:
-            measure[i] = 1/S
-            B[i] = round(N*measure[i])
-            stratum_samples = samples[(samples[:,dim] >= -1 + i*size)*(samples[:,dim] < -1 + (i+1)*size)][:B[i]]
-        if stratum_samples.numel() != 0:
-            f_stratum_samples = f(stratum_samples)
-            sMC_old_1D += torch.mean(f_stratum_samples)*measure[i]
-    
-    return sMC_old_1D/np.sum(measure)
-    
-def compute_sMC_old(f, d, N, S, mu):
-    
-    S_dim = round(np.power(S, 1./d))
-    N_element = round(N/S)
-    size = 2/S_dim
-    sMC_old = 0
-    
-    for i in range(S):
-        multi_index = np.unravel_index(i, [S_dim] * d)
-        bounds = [(-1 + idx*size, -1 + (idx + 1)*size) for idx in multi_index]
-        samples = torch.rand(N_element, d)
-        for j in range(d):
-            samples[:,j] = samples[:,j]*(bounds[j][1] - bounds[j][0]) + bounds[j][0]
-        f_samples = f(samples)
-        sMC_old += torch.mean(f_samples)
-    
-    return sMC_old/S
-
-def compute_sMC_new(f, autoencoder, F, d, N, S, mu, name, left=0, right=0):
+def compute_sMC(f, autoencoder, F, d, N, S):
     
     size = 1./S
     B = round(N/S)
+    sMC = 0
     
-    samples = mu(2*N)
-    if name == "Borehole":
-        samples_reduced = torch.empty(samples.shape)
-        for j in range(samples.shape[1]):
-            samples_reduced[:,j] = (2*samples[:,j] - left[j] - right[j])/(right[j] - left[j])
-    else:
-        samples_reduced = samples
-    latent_samples = F(torch.squeeze(autoencoder.encoder(samples_reduced)).detach())
-    
-    sMC_new = 0
+    samples = torch.from_numpy(np.random.uniform(-1, 1, (2*N, d)))
+    latent_samples = F(torch.squeeze(autoencoder.encoder(samples)).detach())
     
     for i in range(S):
         stratum_samples = samples[(latent_samples >= i*size)*(latent_samples < (i+1)*size)][:B]
         f_stratum_samples = f(stratum_samples)
-        sMC_new += size*torch.mean(f_stratum_samples)
+        sMC += size*torch.mean(f_stratum_samples)
     
-    return sMC_new
+    return sMC
+
+def compute_LHS(f, d, N):
+    
+    sampler = qmc.LatinHypercube(d=d)
+    samples = 2*torch.from_numpy(sampler.random(N)) - 1
+    LHS = torch.mean(f(samples)).item()
+    
+    return LHS
+
+def compute_qMC(f, d, N):
+    
+    sampler = qmc.Sobol(d=d, scramble=True)
+    samples = 2*torch.from_numpy(sampler.random(N)) - 1
+    qMC = torch.mean(f(samples)).item()
+    
+    return qMC
